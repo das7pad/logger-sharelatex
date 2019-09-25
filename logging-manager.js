@@ -253,4 +253,4 @@ const Logger = module.exports = {
   }
 }
 
-Logger.initialize('default-sharelatex')
+Logger.initialize(process.env.SERVICE_NAME || 'default-sharelatex')
