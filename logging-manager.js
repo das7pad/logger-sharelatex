@@ -1,6 +1,21 @@
 const bunyan = require('bunyan')
 const request = require('request')
 const dns = require('dns')
+const OError = require('@overleaf/o-error')
+
+// bunyan error serializer
+const errSerializer = function (err) {
+  if (!err || !err.stack)
+    return err;
+  return {
+    message: err.message,
+    name: err.name,
+    stack: OError.getFullStack(err),
+    info: OError.getFullInfo(err),
+    code: err.code,
+    signal: err.signal
+  };
+};
 
 const Logger = module.exports = {
   initialize(name) {
@@ -29,7 +44,11 @@ const Logger = module.exports = {
     }
     this.logger = bunyan.createLogger({
       name,
-      serializers: bunyan.stdSerializers,
+      serializers: {
+        err: errSerializer,
+        req: bunyan.stdSerializers.req,
+        res: bunyan.stdSerializers.res
+      },
       streams: loggerStreams
     })
     if (this.isProduction) {
