@@ -93,10 +93,12 @@ const Logger = module.exports = {
   },
 
   initializeErrorReporting(sentry_dsn, options) {
+    options = options || {}
     const raven = require('raven')
     this.raven = new raven.Client(sentry_dsn, options)
     this.lastErrorTimeStamp = 0 // for rate limiting on sentry reporting
     this.lastErrorCount = 0
+    this.usesSampling = typeof options.sampleRate !== 'undefined'
   },
 
   captureException(attributes, message, level) {
@@ -202,7 +204,12 @@ const Logger = module.exports = {
       })
     }
     this.logger.error(attributes, message, ...Array.from(args))
-    if (this.raven != null) {
+    if (!this.raven) {
+      return
+    }
+    if (this.usesSampling) {
+      return this.captureException(attributes, message, 'error')
+    } else {
       const MAX_ERRORS = 5 // maximum number of errors in 1 minute
       const now = new Date()
       // have we recently reported an error?
