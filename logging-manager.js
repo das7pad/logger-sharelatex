@@ -1,6 +1,7 @@
 const bunyan = require('bunyan')
 const dns = require('dns')
 const OError = require('@overleaf/o-error')
+const Settings = require('settings-sharelatex')
 
 // bunyan error serializer
 const errSerializer = function(err) {
@@ -35,7 +36,9 @@ const Logger = (module.exports = {
     })
     this._setupRingBuffer()
     this._setupStackdriver()
+    this._setupSentry()
     this._setupLogLevelChecker()
+    this._setupErrorHandler()
     return this
   },
 
@@ -267,6 +270,33 @@ const Logger = (module.exports = {
         this.checkInterval = setInterval(checkLogLevel, 1000 * 60)
       })
     }
+  },
+
+  _setupSentry() {
+    const sentryDSN =
+      (Settings.sentry && Settings.sentry.dsn) || process.env.SENTRY_DSN
+    if (!sentryDSN) return
+
+    Logger.initializeErrorReporting(
+      sentryDSN,
+      Settings.sentry && Settings.sentry.options
+    )
+  },
+  _setupErrorHandler() {
+    if (!Settings.catchErrors && process.env.CATCH_ERRORS !== 'true') return
+    const exitOnError =
+      Settings.exitOnError || process.env.EXIT_ON_ERROR === 'true'
+
+    process.removeAllListeners('uncaughtException')
+    process.on('uncaughtException', err => {
+      this.error({ err }, 'uncaughtException')
+      if (exitOnError) process.exit(1)
+    })
+    process.removeAllListeners('unhandledRejection')
+    process.on('unhandledRejection', (err, promise) => {
+      this.err({ err, promise }, 'Unhandled Rejection at Promise')
+      if (exitOnError) process.exit(2)
+    })
   }
 })
 

@@ -59,7 +59,8 @@ describe('LoggingManager', function() {
         }),
         raven: this.Raven,
         request: this.Request,
-        '@google-cloud/logging-bunyan': this.GCPLogging
+        '@google-cloud/logging-bunyan': this.GCPLogging,
+        'settings-sharelatex': {}
       }
     })
     this.loggerName = 'test'
