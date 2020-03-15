@@ -1,12 +1,14 @@
 const bunyan = require('bunyan')
 const request = require('request')
 const dns = require('dns')
+const yn = require('yn')
 const OError = require('@overleaf/o-error')
 
 // bunyan error serializer
-const errSerializer = function (err) {
-  if (!err || !err.stack)
-    return err;
+const errSerializer = function(err) {
+  if (!err || !err.stack) {
+    return err
+  }
   return {
     message: err.message,
     name: err.name,
@@ -14,34 +16,16 @@ const errSerializer = function (err) {
     info: OError.getFullInfo(err),
     code: err.code,
     signal: err.signal
-  };
-};
+  }
+}
 
-const Logger = module.exports = {
+const Logger = (module.exports = {
   initialize(name) {
     this.isProduction =
       (process.env['NODE_ENV'] || '').toLowerCase() === 'production'
     this.defaultLevel =
       process.env['LOG_LEVEL'] || (this.isProduction ? 'warn' : 'debug')
     this.loggerName = name
-    this.ringBufferSize = parseInt(process.env['LOG_RING_BUFFER_SIZE']) || 0
-    const loggerStreams = [
-      {
-        level: this.defaultLevel,
-        stream: process.stdout
-      }
-    ]
-    if (this.ringBufferSize > 0) {
-      this.ringBuffer = new bunyan.RingBuffer({limit: this.ringBufferSize})
-      loggerStreams.push({
-        level: 'trace',
-        type: 'raw',
-        stream: this.ringBuffer
-      })
-    }
-    else {
-      this.ringBuffer = null
-    }
     this.logger = bunyan.createLogger({
       name,
       serializers: {
@@ -49,24 +33,11 @@ const Logger = module.exports = {
         req: bunyan.stdSerializers.req,
         res: bunyan.stdSerializers.res
       },
-      streams: loggerStreams
+      streams: [{ level: this.defaultLevel, stream: process.stdout }]
     })
-    if (this.isProduction) {
-      // are we running in a google cloud vm
-      dns.lookup('metadata.google.internal', (err, addr, family) => {
-        if (err) return
-
-        // clear interval if already set
-        if (this.checkInterval) {
-          clearInterval(this.checkInterval)
-        }
-        // check for log level override on startup
-        this.checkLogLevel()
-        // re-check log level every minute
-        const checkLogLevel = () => this.checkLogLevel()
-        this.checkInterval = setInterval(checkLogLevel, 1000 * 60)
-      })
-    }
+    this._setupRingBuffer()
+    this._setupStackdriver()
+    this._setupLogLevelChecker()
     return this
   },
 
@@ -75,9 +46,7 @@ const Logger = module.exports = {
       headers: {
         'Metadata-Flavor': 'Google'
       },
-      uri: `http://metadata.google.internal/computeMetadata/v1/project/attributes/${
-        this.loggerName
-      }-setLogLevelEndTime`
+      uri: `http://metadata.google.internal/computeMetadata/v1/project/attributes/${this.loggerName}-setLogLevelEndTime`
     }
     request(options, (err, response, body) => {
       if (err) {
@@ -92,10 +61,10 @@ const Logger = module.exports = {
     })
   },
 
-  initializeErrorReporting(sentry_dsn, options) {
+  initializeErrorReporting(sentryDsn, options) {
     options = options || {}
     const raven = require('raven')
-    this.raven = new raven.Client(sentry_dsn, options)
+    this.raven = new raven.Client(sentryDsn, options)
     this.lastErrorTimeStamp = 0 // for rate limiting on sentry reporting
     this.lastErrorCount = 0
     this.usesSampling = typeof options.sampleRate !== 'undefined'
@@ -162,25 +131,21 @@ const Logger = module.exports = {
         if (error.path) {
           error.message = error.message.replace(` '${error.path}'`, '')
         }
-      } catch (error1) {}
-      // send the error to sentry
-      try {
+
+        // send the error to sentry
         this.raven.captureException(error, { tags, extra, level })
+
         // put a flag on the errors to avoid reporting them multiple times
-        return (() => {
-          const result = []
-          for (key in attributes) {
-            value = attributes[key]
-            if (value instanceof Error) {
-              result.push((value.reportedToSentry = true))
-            } else {
-              result.push(undefined)
-            }
+        const result = []
+        for (key in attributes) {
+          value = attributes[key]
+          if (value instanceof Error) {
+            value.reportedToSentry = true
           }
           return result
-        })()
-      } catch (error2) {
-        return
+        }
+      } catch (err) {
+        // ignore Raven errors
       }
     }
   },
@@ -199,7 +164,7 @@ const Logger = module.exports = {
 
   error(attributes, message, ...args) {
     if (this.ringBuffer !== null && Array.isArray(this.ringBuffer.records)) {
-      attributes.logBuffer = this.ringBuffer.records.filter(function (record) {
+      attributes.logBuffer = this.ringBuffer.records.filter(function(record) {
         return record.level !== 50
       })
     }
@@ -257,7 +222,53 @@ const Logger = module.exports = {
     } else {
       return callback()
     }
+  },
+
+  _setupRingBuffer() {
+    this.ringBufferSize = parseInt(process.env['LOG_RING_BUFFER_SIZE']) || 0
+    if (this.ringBufferSize > 0) {
+      this.ringBuffer = new bunyan.RingBuffer({ limit: this.ringBufferSize })
+      this.logger.addStream({
+        level: 'trace',
+        type: 'raw',
+        stream: this.ringBuffer
+      })
+    } else {
+      this.ringBuffer = null
+    }
+  },
+
+  _setupStackdriver() {
+    const stackdriverEnabled = yn(process.env['STACKDRIVER_LOGGING'])
+    if (!stackdriverEnabled) {
+      return
+    }
+    const GCPLogging = require('@google-cloud/logging-bunyan')
+    const stackdriverClient = new GCPLogging.LoggingBunyan({
+      logName: this.loggerName,
+      serviceContext: { service: this.loggerName }
+    })
+    this.logger.addStream(stackdriverClient.stream(this.defaultLevel))
+  },
+
+  _setupLogLevelChecker() {
+    if (this.isProduction) {
+      // are we running in a google cloud vm
+      dns.lookup('metadata.google.internal', (err, addr, family) => {
+        if (err) return
+
+        // clear interval if already set
+        if (this.checkInterval) {
+          clearInterval(this.checkInterval)
+        }
+        // check for log level override on startup
+        this.checkLogLevel()
+        // re-check log level every minute
+        const checkLogLevel = () => this.checkLogLevel()
+        this.checkInterval = setInterval(checkLogLevel, 1000 * 60)
+      })
+    }
   }
-}
+})
 
 Logger.initialize(process.env.SERVICE_NAME || 'default-sharelatex')

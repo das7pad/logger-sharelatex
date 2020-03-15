@@ -7,6 +7,7 @@ const sinonChai = require('sinon-chai')
 
 chai.use(sinonChai)
 chai.should()
+const expect = chai.expect
 
 const modulePath = path.join(__dirname, '../../logging-manager.js')
 
@@ -15,7 +16,8 @@ describe('LoggingManager', function() {
     this.start = Date.now()
     this.clock = sinon.useFakeTimers(this.start)
     this.captureException = sinon.stub()
-    this.mockBunyanLogger = {
+    this.bunyanLogger = {
+      addStream: sinon.stub(),
       debug: sinon.stub(),
       error: sinon.stub(),
       fatal: sinon.stub(),
@@ -23,30 +25,41 @@ describe('LoggingManager', function() {
       level: sinon.stub(),
       warn: sinon.stub()
     }
-    this.mockRavenClient = {
+    this.ravenClient = {
       captureException: this.captureException,
       once: sinon.stub().yields()
+    }
+    this.Bunyan = {
+      createLogger: sinon.stub().returns(this.bunyanLogger),
+      RingBuffer: bunyan.RingBuffer,
+      stdSerializers: {
+        req: sinon.stub(),
+        res: sinon.stub()
+      }
+    }
+    this.Raven = {
+      Client: sinon.stub().returns(this.ravenClient)
+    }
+    this.Request = sinon.stub()
+    this.stackdriverStreamConfig = { stream: 'stackdriver' }
+    this.stackdriverClient = {
+      stream: sinon.stub().returns(this.stackdriverStreamConfig)
+    }
+    this.GCPLogging = {
+      LoggingBunyan: sinon.stub().returns(this.stackdriverClient)
     }
     this.LoggingManager = SandboxedModule.require(modulePath, {
       globals: { console, process },
       requires: {
-        bunyan: (this.Bunyan = {
-          createLogger: sinon.stub().returns(this.mockBunyanLogger),
-          RingBuffer: bunyan.RingBuffer,
-          stdSerializers: {
-            req: sinon.stub(),
-            res: sinon.stub()
+        bunyan: this.Bunyan,
+        dns: (this.Dns = {
+          lookup: (hostname, func) => {
+            func(new Error('GCE metadata server lookup failed'), null, null)
           }
         }),
-        dns: (this.Dns = {
-            lookup: (hostname, func) => {
-              func(new Error('GCE metadata server lookup failed'), null, null)
-            },
-        }),
-        raven: (this.Raven = {
-          Client: sinon.stub().returns(this.mockRavenClient)
-        }),
-        request: (this.Request = sinon.stub())
+        raven: this.Raven,
+        request: this.Request,
+        '@google-cloud/logging-bunyan': this.GCPLogging
       }
     })
     this.loggerName = 'test'
@@ -98,18 +111,18 @@ describe('LoggingManager', function() {
         )
       })
 
-      it('should not run checkLogLevel', function () {
+      it('should not run checkLogLevel', function() {
         this.checkLogLevelStub.should.not.have.been.called
       })
 
       describe('after 10 minutes', () =>
-        it('should still not run checkLogLevel', function () {
+        it('should still not run checkLogLevel', function() {
           this.clock.tick(601 * 1000)
           this.checkLogLevelStub.should.not.have.been.called
         }))
     })
 
-    describe('in production on GCE', function () {
+    describe('in production on GCE', function() {
       beforeEach(function() {
         process.env.NODE_ENV = 'production'
         this.lookupStub = sinon.stub(this.Dns, 'lookup')
@@ -162,37 +175,37 @@ describe('LoggingManager', function() {
 
     it('should log debug', function() {
       this.logger.debug(this.logArgs)
-      this.mockBunyanLogger.debug.should.have.been.calledWith(this.logArgs)
+      this.bunyanLogger.debug.should.have.been.calledWith(this.logArgs)
     })
 
     it('should log error', function() {
       this.logger.error(this.logArgs)
-      this.mockBunyanLogger.error.should.have.been.calledWith(this.logArgs)
+      this.bunyanLogger.error.should.have.been.calledWith(this.logArgs)
     })
 
     it('should log fatal', function() {
       this.logger.fatal(this.logArgs)
-      this.mockBunyanLogger.fatal.should.have.been.calledWith(this.logArgs)
+      this.bunyanLogger.fatal.should.have.been.calledWith(this.logArgs)
     })
 
     it('should log info', function() {
       this.logger.info(this.logArgs)
-      this.mockBunyanLogger.info.should.have.been.calledWith(this.logArgs)
+      this.bunyanLogger.info.should.have.been.calledWith(this.logArgs)
     })
 
     it('should log warn', function() {
       this.logger.warn(this.logArgs)
-      this.mockBunyanLogger.warn.should.have.been.calledWith(this.logArgs)
+      this.bunyanLogger.warn.should.have.been.calledWith(this.logArgs)
     })
 
     it('should log err', function() {
       this.logger.err(this.logArgs)
-      this.mockBunyanLogger.error.should.have.been.calledWith(this.logArgs)
+      this.bunyanLogger.error.should.have.been.calledWith(this.logArgs)
     })
 
     it('should log log', function() {
       this.logger.log(this.logArgs)
-      this.mockBunyanLogger.info.should.have.been.calledWith(this.logArgs)
+      this.bunyanLogger.info.should.have.been.calledWith(this.logArgs)
     })
   })
 
@@ -274,8 +287,8 @@ describe('LoggingManager', function() {
       this.captureException.callCount.should.equal(10)
     })
 
-    describe('with sampling enabled', function () {
-      beforeEach(function () {
+    describe('with sampling enabled', function() {
+      beforeEach(function() {
         this.logger.usesSampling = true
       })
       it('should forward all errors with sampling enabled', function() {
@@ -293,23 +306,23 @@ describe('LoggingManager', function() {
     })
   })
 
-  describe('sampling detection', function () {
-    it('should set sampling from greater 0', function () {
-      this.logger.initializeErrorReporting('test_dsn', {sampleRate: 0.5})
+  describe('sampling detection', function() {
+    it('should set sampling from greater 0', function() {
+      this.logger.initializeErrorReporting('test_dsn', { sampleRate: 0.5 })
       this.logger.usesSampling.should.equal(true)
     })
 
-    it('should set sampling from exactly 0', function () {
-      this.logger.initializeErrorReporting('test_dsn', {sampleRate: 0})
+    it('should set sampling from exactly 0', function() {
+      this.logger.initializeErrorReporting('test_dsn', { sampleRate: 0 })
       this.logger.usesSampling.should.equal(true)
     })
 
-    it('should not set sampling when option is not defined', function () {
+    it('should not set sampling when option is not defined', function() {
       this.logger.initializeErrorReporting('test_dsn', {})
       this.logger.usesSampling.should.equal(false)
     })
 
-    it('should set sampling when not options are given', function () {
+    it('should set sampling when not options are given', function() {
       this.logger.initializeErrorReporting('test_dsn')
       this.logger.usesSampling.should.equal(false)
     })
@@ -322,9 +335,7 @@ describe('LoggingManager', function() {
         headers: {
           'Metadata-Flavor': 'Google'
         },
-        uri: `http://metadata.google.internal/computeMetadata/v1/project/attributes/${
-          this.loggerName
-        }-setLogLevelEndTime`
+        uri: `http://metadata.google.internal/computeMetadata/v1/project/attributes/${this.loggerName}-setLogLevelEndTime`
       }
       this.Request.should.have.been.calledWithMatch(options)
     })
@@ -336,7 +347,7 @@ describe('LoggingManager', function() {
       })
 
       it('should only set default level', function() {
-        this.mockBunyanLogger.level.should.have.been.calledOnce.and.calledWith(
+        this.bunyanLogger.level.should.have.been.calledOnce.and.calledWith(
           'debug'
         )
       })
@@ -349,7 +360,7 @@ describe('LoggingManager', function() {
       })
 
       it('should only set default level', function() {
-        this.mockBunyanLogger.level.should.have.been.calledOnce.and.calledWith(
+        this.bunyanLogger.level.should.have.been.calledOnce.and.calledWith(
           'debug'
         )
       })
@@ -362,22 +373,22 @@ describe('LoggingManager', function() {
       })
 
       it('should only set default level', function() {
-        this.mockBunyanLogger.level.should.have.been.calledOnce.and.calledWith(
+        this.bunyanLogger.level.should.have.been.calledOnce.and.calledWith(
           'debug'
         )
       })
     })
 
-    describe('when time value returned that is less than current time', function() {
+    describe('when time value returned that is more than current time', function() {
       describe('when level is already set', function() {
         beforeEach(function() {
-          this.mockBunyanLogger.level.returns(10)
+          this.bunyanLogger.level.returns(10)
           this.Request.yields(null, { statusCode: 200 }, this.start + 1000)
           this.logger.checkLogLevel()
         })
 
         it('should set trace level', function() {
-          this.mockBunyanLogger.level.should.have.been.calledOnce.and.calledWith(
+          this.bunyanLogger.level.should.have.been.calledOnce.and.calledWith(
             'trace'
           )
         })
@@ -385,13 +396,13 @@ describe('LoggingManager', function() {
 
       describe('when level is not already set', function() {
         beforeEach(function() {
-          this.mockBunyanLogger.level.returns(20)
+          this.bunyanLogger.level.returns(20)
           this.Request.yields(null, { statusCode: 200 }, this.start + 1000)
           this.logger.checkLogLevel()
         })
 
         it('should set trace level', function() {
-          this.mockBunyanLogger.level.should.have.been.calledOnce.and.calledWith(
+          this.bunyanLogger.level.should.have.been.calledOnce.and.calledWith(
             'trace'
           )
         })
@@ -402,16 +413,9 @@ describe('LoggingManager', function() {
   describe('ringbuffer', function() {
     beforeEach(function() {
       this.logBufferMock = [
-        {
-          msg: 'log 1'
-        },
-        {
-          msg: 'log 2'
-        },
-        {
-          level: 50,
-          msg: 'error'
-        }
+        { msg: 'log 1' },
+        { msg: 'log 2' },
+        { level: 50, msg: 'error' }
       ]
     })
 
@@ -428,13 +432,9 @@ describe('LoggingManager', function() {
       })
 
       it('should include buffered logs in error log and filter out error logs in buffer', function() {
-        this.mockBunyanLogger.error.lastCall.args[0].logBuffer.should.deep.equal([
-          {
-            msg: 'log 1'
-          },
-          {
-            msg: 'log 2'
-          },
+        this.bunyanLogger.error.lastCall.args[0].logBuffer.should.deep.equal([
+          { msg: 'log 1' },
+          { msg: 'log 2' }
         ])
       })
     })
@@ -451,8 +451,42 @@ describe('LoggingManager', function() {
       })
 
       it('should not include buffered logs in error log', function() {
-        chai.expect(this.mockBunyanLogger.error.lastCall.args[0].logBuffer).be
-          .undefined
+        expect(this.bunyanLogger.error.lastCall.args[0].logBuffer).be.undefined
+      })
+    })
+  })
+
+  describe('stackdriver logging', function() {
+    describe('when STACKDRIVER_LOGGING is unset', function() {
+      beforeEach(function() {
+        process.env['STACKDRIVER_LOGGING'] = undefined
+        this.LoggingManager.initialize(this.loggerName)
+      })
+
+      it('is disabled', function() {
+        expect(this.bunyanLogger.addStream).not.to.have.been.calledWith(
+          this.stackdriverStreamConfig
+        )
+      })
+    })
+
+    describe('when STACKDRIVER_LOGGING is true', function() {
+      beforeEach(function() {
+        process.env['STACKDRIVER_LOGGING'] = 'true'
+        this.LoggingManager.initialize(this.loggerName)
+      })
+
+      it('is enabled', function() {
+        expect(this.bunyanLogger.addStream).to.have.been.calledWith(
+          this.stackdriverStreamConfig
+        )
+      })
+
+      it('is configured properly', function() {
+        expect(this.GCPLogging.LoggingBunyan).to.have.been.calledWith({
+          logName: this.loggerName,
+          serviceContext: { service: this.loggerName }
+        })
       })
     })
   })
