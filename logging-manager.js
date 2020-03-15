@@ -1,7 +1,6 @@
 const bunyan = require('bunyan')
 const request = require('request')
 const dns = require('dns')
-const yn = require('yn')
 const OError = require('@overleaf/o-error')
 
 // bunyan error serializer
@@ -239,7 +238,7 @@ const Logger = (module.exports = {
   },
 
   _setupStackdriver() {
-    const stackdriverEnabled = yn(process.env['STACKDRIVER_LOGGING'])
+    const stackdriverEnabled = process.env['STACKDRIVER_LOGGING'] === 'true'
     if (!stackdriverEnabled) {
       return
     }
