@@ -1,5 +1,4 @@
 const bunyan = require('bunyan')
-const request = require('request')
 const dns = require('dns')
 const OError = require('@overleaf/o-error')
 
@@ -47,6 +46,7 @@ const Logger = (module.exports = {
       },
       uri: `http://metadata.google.internal/computeMetadata/v1/project/attributes/${this.loggerName}-setLogLevelEndTime`
     }
+    const request = require('request')
     request(options, (err, response, body) => {
       if (err) {
         this.logger.level(this.defaultLevel)
