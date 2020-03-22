@@ -77,6 +77,8 @@ const Logger = (module.exports = {
     let key, value
     if (typeof attributes === 'string') {
       attributes = { err: new Error(attributes) }
+    } else if (typeof attributes !== 'object') {
+      attributes = {junk: attributes}
     }
     // extract any error object
     let error = attributes.err || attributes.error
@@ -130,7 +132,7 @@ const Logger = (module.exports = {
       // filter paths from the message to avoid duplicate errors in sentry
       // (e.g. errors from `fs` methods which have a path attribute)
       try {
-        if (error.path) {
+        if (error.path && error.message) {
           error.message = error.message.replace(` '${error.path}'`, '')
         }
 
@@ -163,6 +165,9 @@ const Logger = (module.exports = {
   },
 
   error(attributes, message, ...args) {
+    if (typeof attributes !== 'object') {
+      attributes = {junk: attributes}
+    }
     if (this.ringBuffer !== null && Array.isArray(this.ringBuffer.records)) {
       attributes.logBuffer = this.ringBuffer.records.filter(function(record) {
         return record.level !== 50
