@@ -78,7 +78,7 @@ const Logger = (module.exports = {
     if (typeof attributes === 'string') {
       attributes = { err: new Error(attributes) }
     } else if (typeof attributes !== 'object') {
-      attributes = {junk: attributes}
+      attributes = { junk: attributes }
     }
     // extract any error object
     let error = attributes.err || attributes.error
@@ -166,7 +166,7 @@ const Logger = (module.exports = {
 
   error(attributes, message, ...args) {
     if (typeof attributes !== 'object') {
-      attributes = {junk: attributes}
+      attributes = { junk: attributes }
     }
     if (this.ringBuffer !== null && Array.isArray(this.ringBuffer.records)) {
       attributes.logBuffer = this.ringBuffer.records.filter(function(record) {
