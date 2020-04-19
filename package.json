@@ -18,7 +18,7 @@
     "@overleaf/o-error": "^2.0.0",
     "bunyan": "1.8.12",
     "raven": "^2.6.4",
-    "settings-sharelatex": "^1.1.0"
+    "settings-sharelatex": "git+https://github.com/das7pad/settings-sharelatex.git#d0797834438df2d102798a64602adf2f71ac8e48"
   },
   "peerDependencies": {
     "request": "2.88.0",
