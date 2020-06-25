@@ -7,7 +7,7 @@
     "url": "http://github.com/sharelatex/logger-sharelatex.git"
   },
   "license": "AGPL-3.0-only",
-  "version": "1.9.1",
+  "version": "2.0.0",
   "scripts": {
     "test": "mocha test/**/*.js",
     "format": "prettier-eslint '**/*.js' --list-different",
@@ -15,7 +15,7 @@
     "lint": "eslint -f unix ."
   },
   "dependencies": {
-    "@overleaf/o-error": "^2.0.0",
+    "@overleaf/o-error": "^3.0.0",
     "bunyan": "1.8.12",
     "raven": "^2.6.4",
     "settings-sharelatex": "https://github.com/das7pad/settings-sharelatex/archive/d0797834438df2d102798a64602adf2f71ac8e48.tar.gz"
