@@ -306,11 +306,11 @@ describe('LoggingManager', function () {
       })
     })
 
-    describe('with sampling enabled', function() {
-      beforeEach(function() {
+    describe('with sampling enabled', function () {
+      beforeEach(function () {
         this.logger.usesSampling = true
       })
-      it('should forward all errors with sampling enabled', function() {
+      it('should forward all errors with sampling enabled', function () {
         this.logger.error({ foo: 'bar' }, 'message1')
         this.logger.error({ foo: 'bar' }, 'message2')
         this.logger.error({ foo: 'bar' }, 'message3')
@@ -325,23 +325,23 @@ describe('LoggingManager', function () {
     })
   })
 
-  describe('sampling detection', function() {
-    it('should set sampling from greater 0', function() {
+  describe('sampling detection', function () {
+    it('should set sampling from greater 0', function () {
       this.logger.initializeErrorReporting('test_dsn', { sampleRate: 0.5 })
       this.logger.usesSampling.should.equal(true)
     })
 
-    it('should set sampling from exactly 0', function() {
+    it('should set sampling from exactly 0', function () {
       this.logger.initializeErrorReporting('test_dsn', { sampleRate: 0 })
       this.logger.usesSampling.should.equal(true)
     })
 
-    it('should not set sampling when option is not defined', function() {
+    it('should not set sampling when option is not defined', function () {
       this.logger.initializeErrorReporting('test_dsn', {})
       this.logger.usesSampling.should.equal(false)
     })
 
-    it('should set sampling when not options are given', function() {
+    it('should set sampling when not options are given', function () {
       this.logger.initializeErrorReporting('test_dsn')
       this.logger.usesSampling.should.equal(false)
     })

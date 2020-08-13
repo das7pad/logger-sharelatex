@@ -254,7 +254,7 @@ const Logger = (module.exports = {
   },
 
   _setupStackdriver() {
-    const stackdriverEnabled = process.env['STACKDRIVER_LOGGING'] === 'true'
+    const stackdriverEnabled = process.env.STACKDRIVER_LOGGING === 'true'
     if (!stackdriverEnabled) {
       return
     }
@@ -305,7 +305,7 @@ const Logger = (module.exports = {
       Settings.exitOnError || process.env.EXIT_ON_ERROR === 'true'
 
     process.removeAllListeners('uncaughtException')
-    process.on('uncaughtException', err => {
+    process.on('uncaughtException', (err) => {
       this.error({ err }, 'uncaughtException')
       if (exitOnError) process.exit(1)
     })
