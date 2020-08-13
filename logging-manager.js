@@ -1,10 +1,10 @@
 const bunyan = require('bunyan')
-const dns = require('dns')
+const fs = require('fs')
 const OError = require('@overleaf/o-error')
 const Settings = require('settings-sharelatex')
 
 // bunyan error serializer
-const errSerializer = function(err) {
+const errSerializer = function (err) {
   if (!err || !err.stack) {
     return err
   }
@@ -20,10 +20,11 @@ const errSerializer = function(err) {
 
 const Logger = (module.exports = {
   initialize(name) {
+    this.logLevelSource = (process.env.LOG_LEVEL_SOURCE || 'file').toLowerCase()
     this.isProduction =
-      (process.env['NODE_ENV'] || '').toLowerCase() === 'production'
+      (process.env.NODE_ENV || '').toLowerCase() === 'production'
     this.defaultLevel =
-      process.env['LOG_LEVEL'] || (this.isProduction ? 'warn' : 'debug')
+      process.env.LOG_LEVEL || (this.isProduction ? 'warn' : 'debug')
     this.loggerName = name
     this.logger = bunyan.createLogger({
       name,
@@ -42,25 +43,34 @@ const Logger = (module.exports = {
     return this
   },
 
-  checkLogLevel() {
-    const options = {
-      headers: {
-        'Metadata-Flavor': 'Google'
-      },
-      uri: `http://metadata.google.internal/computeMetadata/v1/project/attributes/${this.loggerName}-setLogLevelEndTime`
-    }
-    const request = require('request')
-    request(options, (err, response, body) => {
-      if (err) {
-        this.logger.level(this.defaultLevel)
-        return
-      }
-      if (parseInt(body) > Date.now()) {
+  async checkLogLevel() {
+    try {
+      const end = await this.getTracingEndTime()
+      if (parseInt(end, 10) > Date.now()) {
         this.logger.level('trace')
       } else {
         this.logger.level(this.defaultLevel)
       }
-    })
+    } catch (err) {
+      this.logger.level(this.defaultLevel)
+    }
+  },
+
+  async getTracingEndTimeFile() {
+    return fs.promises.readFile('/logging/tracingEndTime')
+  },
+
+  async getTracingEndTimeMetadata() {
+    const options = {
+      headers: {
+        'Metadata-Flavor': 'Google'
+      }
+    }
+    const uri = `http://metadata.google.internal/computeMetadata/v1/project/attributes/${this.loggerName}-setLogLevelEndTime`
+    const fetch = require('node-fetch')
+    const res = await fetch(uri, options)
+    if (!res.ok) throw new Error('Metadata not okay')
+    return res.text()
   },
 
   initializeErrorReporting(sentryDsn, options) {
@@ -169,7 +179,7 @@ const Logger = (module.exports = {
       attributes = { junk: attributes }
     }
     if (this.ringBuffer !== null && Array.isArray(this.ringBuffer.records)) {
-      attributes.logBuffer = this.ringBuffer.records.filter(function(record) {
+      attributes.logBuffer = this.ringBuffer.records.filter(function (record) {
         return record.level !== 50
       })
     }
@@ -212,14 +222,14 @@ const Logger = (module.exports = {
 
   fatal(attributes, message, callback) {
     if (callback == null) {
-      callback = function() {}
+      callback = function () {}
     }
     this.logger.fatal(attributes, message)
     if (this.raven != null) {
-      var cb = function(e) {
+      var cb = function (e) {
         // call the callback once after 'logged' or 'error' event
         callback()
-        return (cb = function() {})
+        return (cb = function () {})
       }
       this.captureException(attributes, message, 'fatal')
       this.raven.once('logged', cb)
@@ -230,7 +240,7 @@ const Logger = (module.exports = {
   },
 
   _setupRingBuffer() {
-    this.ringBufferSize = parseInt(process.env['LOG_RING_BUFFER_SIZE']) || 0
+    this.ringBufferSize = parseInt(process.env.LOG_RING_BUFFER_SIZE) || 0
     if (this.ringBufferSize > 0) {
       this.ringBuffer = new bunyan.RingBuffer({ limit: this.ringBufferSize })
       this.logger.addStream({
@@ -258,20 +268,24 @@ const Logger = (module.exports = {
 
   _setupLogLevelChecker() {
     if (this.isProduction) {
-      // are we running in a google cloud vm
-      dns.lookup('metadata.google.internal', (err, addr, family) => {
-        if (err) return
-
-        // clear interval if already set
-        if (this.checkInterval) {
-          clearInterval(this.checkInterval)
-        }
-        // check for log level override on startup
-        this.checkLogLevel()
-        // re-check log level every minute
-        const checkLogLevel = () => this.checkLogLevel()
-        this.checkInterval = setInterval(checkLogLevel, 1000 * 60)
-      })
+      // clear interval if already set
+      if (this.checkInterval) {
+        clearInterval(this.checkInterval)
+      }
+      if (this.logLevelSource === 'file') {
+        this.getTracingEndTime = this.getTracingEndTimeFile
+      } else if (this.logLevelSource === 'gce_metadata') {
+        this.getTracingEndTime = this.getTracingEndTimeMetadata
+      } else if (this.logLevelSource === 'none') {
+        return
+      } else {
+        console.log('Unrecognised log level source')
+        return
+      }
+      // check for log level override on startup
+      this.checkLogLevel()
+      // re-check log level every minute
+      this.checkInterval = setInterval(this.checkLogLevel.bind(this), 1000 * 60)
     }
   },
 
