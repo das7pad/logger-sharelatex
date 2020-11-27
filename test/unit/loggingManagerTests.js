@@ -72,7 +72,7 @@ describe('LoggingManager', function () {
         'node-fetch': this.Fetch,
         fs: this.Fs,
         '@google-cloud/logging-bunyan': this.GCPLogging,
-        'settings-sharelatex': {}
+        '@overleaf/settings': {}
       }
     })
     this.loggerName = 'test'

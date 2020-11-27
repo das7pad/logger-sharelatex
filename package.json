@@ -17,14 +17,15 @@
   "dependencies": {
     "@overleaf/o-error": "^3.0.0",
     "bunyan": "1.8.12",
-    "raven": "^2.6.4",
-    "settings-sharelatex": "https://github.com/das7pad/settings-sharelatex/archive/d0797834438df2d102798a64602adf2f71ac8e48.tar.gz"
+    "raven": "^2.6.4"
   },
   "peerDependencies": {
     "@google-cloud/logging-bunyan": "^2.0.0",
+    "@overleaf/settings": "^3.0.0",
     "node-fetch": "^2.6.0"
   },
   "devDependencies": {
+    "@overleaf/settings": "https://github.com/das7pad/settings-sharelatex/archive/e8942a2a7825619dbc8ab66797b90c684b5ccd2d.tar.gz",
     "@google-cloud/logging-bunyan": "^2.0.0",
     "chai": "^4.2.0",
     "mocha": "^8.0.1",

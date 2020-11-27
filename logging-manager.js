@@ -1,7 +1,7 @@
 const bunyan = require('bunyan')
 const fs = require('fs')
 const OError = require('@overleaf/o-error')
-const Settings = require('settings-sharelatex')
+const Settings = require('@overleaf/settings')
 
 // bunyan error serializer
 const errSerializer = function (err) {
